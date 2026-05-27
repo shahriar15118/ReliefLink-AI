@@ -4,6 +4,7 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 import dns from "dns";
 import fs from "fs";
+import { createClient } from "@supabase/supabase-js";
 
 // Initialize environment variables manually in case of direct loader
 import dotenv from "dotenv";
@@ -196,6 +197,54 @@ let volunteers = [
   { id: "vol_03", name: "Sajid Hasan", phone: "+880 1813-223322", skills: ["Search & Rescue", "Driving"], latitude: 23.7260, longitude: 90.4020, available: false, score: 980, assignedTaskId: "task_01", currentTaskName: "Suppressing Chemical Spot" },
   { id: "vol_04", name: "Imran Khan", phone: "+880 1612-990011", skills: ["Driving", "Cooking", "Coordination"], latitude: 22.3551, longitude: 91.7820, available: true, score: 320, assignedTaskId: undefined, currentTaskName: "" }
 ];
+
+// Initialize Supabase Client
+const supabaseUrl = process.env.SUPABASE_URL || "https://uoelwsaneuvugfhtohvq.supabase.co";
+const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || "sb_publishable_WJFHDiE5b34jO3Tcbxxc7g_0dbrpWJA";
+
+let supabase: any = null;
+if (supabaseUrl && supabaseAnonKey && !supabaseUrl.includes("your-project-id")) {
+  try {
+    supabase = createClient(supabaseUrl, supabaseAnonKey);
+    console.log("ReliefLink AI: Supabase Client initialized successfully with URL:", supabaseUrl);
+    // Initial fetch
+    syncVolunteersFromSupabase();
+  } catch (err) {
+    console.error("ReliefLink AI: Failed to initialize Supabase Client:", err);
+  }
+}
+
+async function syncVolunteersFromSupabase() {
+  if (!supabase) return;
+  try {
+    const { data, error } = await supabase
+      .from("volunteers")
+      .select("*");
+    
+    if (error) {
+      console.warn("Could not load from Supabase - Volunteers table may not be live yet:", error.message);
+      return;
+    }
+    
+    if (data && data.length > 0) {
+      volunteers = data.map((item: any) => ({
+        id: item.id,
+        name: item.name,
+        phone: item.phone,
+        skills: Array.isArray(item.skills) ? item.skills : [],
+        latitude: Number(item.latitude),
+        longitude: Number(item.longitude),
+        available: !!item.available,
+        score: Number(item.score || 0),
+        assignedTaskId: item.assigned_task_id || undefined,
+        currentTaskName: item.current_task_name || ""
+      }));
+      console.log(`ReliefLink AI: Loaded ${volunteers.length} volunteers live from Supabase.`);
+    }
+  } catch (err) {
+    console.error("Error standardizing Supabase volunteer schema stream:", err);
+  }
+}
 
 // Live SOS Active Alerts
 let sosAlerts = [
@@ -994,7 +1043,7 @@ app.post("/api/shelters/:id/intake", (req, res) => {
 // VOLUNTEER list and assign
 app.get("/api/volunteers", (req, res) => res.json(volunteers));
 
-app.post("/api/volunteers", (req, res) => {
+app.post("/api/volunteers", async (req, res) => {
   const { name, phone, skills, latitude, longitude } = req.body;
   if (!name || !phone || !skills || !latitude || !longitude) {
     return res.status(400).json({ error: "Missing registration inputs" });
@@ -1014,6 +1063,26 @@ app.post("/api/volunteers", (req, res) => {
   };
 
   volunteers.push(newVol);
+
+  // Sync to Supabase database
+  if (supabase) {
+    supabase.from("volunteers").insert([{
+      id: newVol.id,
+      name: newVol.name,
+      phone: newVol.phone,
+      skills: newVol.skills,
+      latitude: newVol.latitude,
+      longitude: newVol.longitude,
+      available: newVol.available,
+      score: newVol.score,
+      assigned_task_id: null,
+      current_task_name: ""
+    }]).then(({ error }: any) => {
+      if (error) console.error("Error inserting volunteer to Supabase:", error.message);
+      else console.log("Successfully synchronized new volunteer to Supabase!");
+    });
+  }
+
   try {
     broadcastToSSE({ event: "new_volunteer", data: newVol });
   } catch (err) {
@@ -1022,7 +1091,7 @@ app.post("/api/volunteers", (req, res) => {
   return res.status(201).json(newVol);
 });
 
-app.post("/api/volunteers/:id/assign", (req, res) => {
+app.post("/api/volunteers/:id/assign", async (req, res) => {
   const { id } = req.params;
   const { taskName, taskId } = req.body;
 
@@ -1033,6 +1102,19 @@ app.post("/api/volunteers/:id/assign", (req, res) => {
   vol.assignedTaskId = taskId || `tsk_${Math.random().toString(36).substring(2, 6)}`;
   vol.currentTaskName = taskName || "Rescue Coordination Duty";
   vol.score += 150; // award points for participation
+
+  // Sync update to Supabase
+  if (supabase) {
+    supabase.from("volunteers").update({
+      available: vol.available,
+      assigned_task_id: vol.assignedTaskId,
+      current_task_name: vol.currentTaskName,
+      score: vol.score
+    }).eq("id", vol.id).then(({ error }: any) => {
+      if (error) console.error("Error updating volunteer in Supabase:", error.message);
+      else console.log("Successfully synchronized volunteer assignment to Supabase!");
+    });
+  }
 
   try {
     broadcastToSSE({ event: "volunteer_assigned", data: vol });
@@ -1576,6 +1658,113 @@ app.get("/api/audits", (req, res) => {
   // Return recent system telemetry audits
   return res.json(systemAudits);
 });
+
+// ==========================================
+// REAL-TIME AUTOMATIC SIMULATORS (Satellite & Field telemetry)
+// ==========================================
+
+let satelliteData = {
+  id: "sat_telemetry",
+  satelliteName: "Sentinel-6 Michael Freilich",
+  altitudeKm: 1336.52,
+  precipitationIndex: 124.5,
+  windSpeedKph: 54.2,
+  submergenceWaterLevelM: 4.12,
+  inundatedAreaSqKm: 345.8,
+  cloudCoverPercent: 88,
+  lastSatelliteSync: new Date().toISOString()
+};
+
+app.get("/api/satellite", (req, res) => {
+  return res.json(satelliteData);
+});
+
+// Automatic simulated real-time telemetry updates loop
+// Ticks every 5 seconds to provide extremely rich real-time visual feeds and synchronizations.
+setInterval(() => {
+  // 1. Update satellite reading
+  satelliteData.altitudeKm = Number((1336.52 + (Math.random() - 0.5) * 0.1).toFixed(2));
+  satelliteData.precipitationIndex = Number(Math.max(10, Math.min(300, satelliteData.precipitationIndex + (Math.random() - 0.5) * 2)).toFixed(1));
+  satelliteData.windSpeedKph = Number(Math.max(5, Math.min(150, satelliteData.windSpeedKph + (Math.random() - 0.5) * 0.8)).toFixed(1));
+  satelliteData.submergenceWaterLevelM = Number(Math.max(0.5, Math.min(10.0, satelliteData.submergenceWaterLevelM + (Math.random() - 0.5) * 0.04)).toFixed(2));
+  satelliteData.inundatedAreaSqKm = Number(Math.max(10, satelliteData.inundatedAreaSqKm + (Math.random() - 0.5) * 0.5).toFixed(1));
+  satelliteData.cloudCoverPercent = Math.max(0, Math.min(100, satelliteData.cloudCoverPercent + Math.round((Math.random() - 0.5) * 2)));
+  satelliteData.lastSatelliteSync = new Date().toISOString();
+
+  // Broadcast satellite update
+  broadcastToSSE({ event: "satellite_update", data: satelliteData });
+
+  // 2. Simulating live Volunteer physical displacement / coordinate drift
+  volunteers.forEach(v => {
+    // Slight jitter to make position update alive on map
+    const latMove = (Math.random() - 0.5) * 0.0006;
+    const lngMove = (Math.random() - 0.5) * 0.0006;
+    v.latitude = Number((v.latitude + latMove).toFixed(5));
+    v.longitude = Number((v.longitude + lngMove).toFixed(5));
+    
+    // Auto increment score minor points for responder patrols
+    if (v.score !== undefined) {
+      v.score += Math.round(Math.random() * 5);
+    }
+
+    // Sync automatic telemetry updates to Supabase
+    if (supabase) {
+      supabase.from("volunteers").update({
+        latitude: v.latitude,
+        longitude: v.longitude,
+        score: v.score
+      }).eq("id", v.id).then(({ error }: any) => {
+        // Handled silently
+      });
+    }
+    
+    broadcastToSSE({ event: "volunteer_assigned", data: v });
+  });
+
+  // 3. Simulating dynamic supply inventory consumption
+  const randIndex = Math.floor(Math.random() * inventory.length);
+  const selectedItem = inventory[randIndex];
+  if (selectedItem) {
+    let currentQty = selectedItem.quantity || 0;
+    if (currentQty > 80) {
+      // Consume 1-3 packages
+      const usedQty = Math.round(Math.random() * 2) + 1;
+      selectedItem.quantity = currentQty - usedQty;
+      selectedItem.lastUpdated = new Date().toISOString();
+      broadcastToSSE({ event: "stock_replenished", data: selectedItem });
+    } else {
+      // Auto-replenish drone dropping if levels hit low triggers
+      const refillQty = 250;
+      selectedItem.quantity = currentQty + refillQty;
+      selectedItem.lastUpdated = new Date().toISOString();
+      broadcastToSSE({ event: "stock_replenished", data: selectedItem });
+
+      // Add audit log
+      systemAudits.unshift({
+        id: "aud_sim_refill_" + selectedItem.id + "_" + Date.now(),
+        action: "Simulated Automated Logistics drone dropped",
+        role: "System Altimetry Engine",
+        details: `Auto replenishment drone dropped ${refillQty} units of ${selectedItem.itemName} to resolve logistical alert.`,
+        timestamp: new Date().toISOString()
+      });
+    }
+  }
+
+  // 4. Sometimes trigger light fluctuations in flood warnings (adds real-time system alerts)
+  if (Math.random() < 0.2 && disasterReports.length > 0) {
+    const report = disasterReports[Math.floor(Math.random() * disasterReports.length)];
+    if (report) {
+      systemAudits.unshift({
+        id: "aud_report_fluid_" + report.id + "_" + Date.now(),
+        action: "Sub-basin Sensor Warning Level alert",
+        role: "Satellite SAR Radar",
+        details: `Inundation at "${report.locationName}" checked via sentinel radar. Minor stream height variation observed.`,
+        timestamp: new Date().toISOString()
+      });
+    }
+  }
+
+}, 5000);
 
 // ==========================================
 // VITE MIDDLEWARE & STATIC HOOKS
