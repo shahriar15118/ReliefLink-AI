@@ -1,0 +1,8 @@
+{
+  "name": "ReliefLink AI",
+  "description": "Enterprise disaster response platform featuring AI image triage, ML resource prediction, A* route optimization, and NGO subscription portal.",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

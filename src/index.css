@@ -1,0 +1,93 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-display: "Outfit", sans-serif;
+}
+
+/* Base styles for Sophisticated Dark design theme */
+html, body {
+  background-color: #09090b;
+  color: #fafafa;
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Selection highlighting */
+::selection {
+  background-color: rgba(249, 115, 22, 0.3); /* orange selection */
+  color: #ffffff;
+}
+
+/* Glassmorphism utility classes - Updated to match Sophisticated Dark */
+.glass-panel {
+  background: rgba(12, 12, 14, 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.dark-glass-panel {
+  background: rgba(9, 9, 11, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* Scrollbar customizations for dark theme */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(9, 9, 11, 0.5);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(249, 115, 22, 0.5); /* glow orange hovering scrollbar */
+}
+
+/* Leaflet control layouts fixes to look dark and seamless */
+.leaflet-container {
+  z-index: 10 !important;
+  font-family: var(--font-sans) !important;
+  background-color: #09090b !important;
+}
+.leaflet-bar a {
+  background-color: #121214 !important;
+  color: #fafafa !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+.leaflet-bar a:hover {
+  background-color: rgba(249, 115, 22, 0.15) !important;
+  color: #ef4444 !important;
+}
+
+/* Wave animation for breathing guides */
+@keyframes double-pulse {
+  0% {
+    transform: scale(0.95);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(0.95);
+    opacity: 0.5;
+  }
+}
+
+.animate-pulse-slow {
+  animation: double-pulse 5s infinite ease-in-out;
+}
+
+
